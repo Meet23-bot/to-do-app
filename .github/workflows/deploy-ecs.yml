@@ -1,1 +1,76 @@
+# Build Docker image, push to Amazon ECR, register ECS task definition, update ECS service.
+# Setup: see docs/GITHUB_ACTIONS_SETUP.md (OIDC + repository variables + secrets).
 
+name: Deploy to Amazon ECS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Skip until you opt in (secrets cannot be used in `if:`). Set variable ECS_DEPLOY_ENABLED=true when ready.
+    if: ${{ vars.ECS_DEPLOY_ENABLED == 'true' && vars.AWS_REGION != '' && vars.ECR_REPOSITORY != '' && vars.ECS_CLUSTER != '' && vars.ECS_SERVICE != '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t "$REGISTRY/$REPOSITORY:$IMAGE_TAG" .
+          docker push "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
+          echo "IMAGE_URI=$REGISTRY/$REPOSITORY:$IMAGE_TAG" >> "$GITHUB_ENV"
+
+      - name: Render ECS task definition
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          sed -e "s/<ACCOUNT_ID>/${AWS_ACCOUNT_ID}/g" \
+              -e "s/<REGION>/${AWS_REGION}/g" \
+              -e "s/<ECR_REPOSITORY>/${ECR_REPOSITORY}/g" \
+              -e "s/<IMAGE_TAG>/${IMAGE_TAG}/g" \
+              aws/ecs-task-definition.template.json > taskdef.json
+          echo "--- taskdef (image line only) ---"
+          grep '"image"' taskdef.json || true
+
+      - name: Register task definition
+        id: register
+        run: |
+          ARN=$(aws ecs register-task-definition --cli-input-json file://taskdef.json --query taskDefinition.taskDefinitionArn --output text)
+          echo "task_definition_arn=$ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Update ECS service
+        run: |
+          aws ecs update-service \
+            --cluster "${{ vars.ECS_CLUSTER }}" \
+            --service "${{ vars.ECS_SERVICE }}" \
+            --task-definition "${{ steps.register.outputs.task_definition_arn }}" \
+            --force-new-deployment
