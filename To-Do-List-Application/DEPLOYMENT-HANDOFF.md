@@ -59,7 +59,7 @@ Reference files:
 
 ## 7) GitHub Actions (optional CI/CD)
 
-- Workflow: `.github/workflows/deploy-ecs.yml`
+- Workflow (repository root): `.github/workflows/deploy-ecs.yml`
 - Setup guide: `docs/GITHUB_ACTIONS_SETUP.md`
 
 The workflow builds the Docker image, pushes to ECR with tag `${{ github.sha }}`, registers a new ECS task definition from `aws/ecs-task-definition.template.json`, and forces a new ECS deployment. It is **skipped** until GitHub variables and OIDC secrets are configured (see the setup doc).

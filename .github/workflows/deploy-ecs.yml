@@ -1,5 +1,6 @@
 # Build Docker image, push to Amazon ECR, register ECS task definition, update ECS service.
-# Setup: see docs/GITHUB_ACTIONS_SETUP.md (OIDC + repository variables + secrets).
+# App lives under To-Do-List-Application/ — paths below must stay in sync with that folder.
+# Setup: see To-Do-List-Application/docs/GITHUB_ACTIONS_SETUP.md (OIDC + repository variables + secrets).
 
 name: Deploy to Amazon ECS
 
@@ -57,7 +58,7 @@ jobs:
               -e "s/<REGION>/${AWS_REGION}/g" \
               -e "s/<ECR_REPOSITORY>/${ECR_REPOSITORY}/g" \
               -e "s/<IMAGE_TAG>/${IMAGE_TAG}/g" \
-              aws/ecs-task-definition.template.json > taskdef.json
+              To-Do-List-Application/aws/ecs-task-definition.template.json > taskdef.json
           echo "--- taskdef (image line only) ---"
           grep '"image"' taskdef.json || true
 

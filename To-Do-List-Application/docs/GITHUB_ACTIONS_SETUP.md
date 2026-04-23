@@ -1,6 +1,6 @@
 # GitHub Actions → Amazon ECR → Amazon ECS
 
-This repository includes `.github/workflows/deploy-ecs.yml`. It runs when you push to `main` (or when you run the workflow manually from the **Actions** tab).
+GitHub only loads workflows from the **repository root** `.github/workflows/`. In this repo layout, the deploy workflow lives at **repo root**: `.github/workflows/deploy-ecs.yml` (not under `To-Do-List-Application/.github/`). It runs when you push to `main` (or when you run the workflow manually from the **Actions** tab).
 
 ## What you need in AWS first
 
