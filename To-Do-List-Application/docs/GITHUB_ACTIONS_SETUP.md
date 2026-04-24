@@ -65,7 +65,9 @@ Copy the role **ARN**; you will store it as a GitHub secret.
 | `AWS_ROLE_TO_ASSUME` | `arn:aws:iam::123456789012:role/github-actions-deploy` | OIDC role ARN from above |
 | `AWS_ACCOUNT_ID` | `123456789012` | 12-digit account id (used to fill task definition) |
 
-Until **`ECS_DEPLOY_ENABLED=true`** and the other variables are set, the deploy job is **skipped** (so pushes to `main` do not fail CI). You must still add the **secrets** below or the job will fail at the AWS credential step.
+Until **`ECS_DEPLOY_ENABLED=true`** and the other variables are set, the workflow will **not run the AWS deploy steps** (on `push` it will succeed without deploying). On **`workflow_dispatch`**, missing/invalid configuration will **fail immediately** with an explicit error in the **Check deploy configuration** step so you can see exactly what GitHub sees.
+
+You must still add the **secrets** below or the deploy will fail at the AWS credential step.
 
 ## First successful run
 
