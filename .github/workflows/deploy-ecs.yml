@@ -14,9 +14,6 @@ permissions:
   id-token: write
   contents: read
 
-env:
-  AWS_REGION: ${{ vars.AWS_REGION }}
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -26,30 +23,42 @@ jobs:
         run: |
           set -euo pipefail
           echo "event=${{ github.event_name }}"
-          echo "ECS_DEPLOY_ENABLED='${{ vars.ECS_DEPLOY_ENABLED }}'"
-          echo "AWS_REGION='${{ vars.AWS_REGION }}'"
-          echo "ECR_REPOSITORY='${{ vars.ECR_REPOSITORY }}'"
-          echo "ECS_CLUSTER='${{ vars.ECS_CLUSTER }}'"
-          echo "ECS_SERVICE='${{ vars.ECS_SERVICE }}'"
+          echo "ECS_DEPLOY_ENABLED(raw)='${{ vars.ECS_DEPLOY_ENABLED }}'"
+          echo "AWS_REGION(raw)='${{ vars.AWS_REGION }}'"
+          echo "ECR_REPOSITORY(raw)='${{ vars.ECR_REPOSITORY }}'"
+          echo "ECS_CLUSTER(raw)='${{ vars.ECS_CLUSTER }}'"
+          echo "ECS_SERVICE(raw)='${{ vars.ECS_SERVICE }}'"
+
+          ECS_DEPLOY_ENABLED_TRIMMED="$(echo -n "${{ vars.ECS_DEPLOY_ENABLED }}" | tr -d '\r' | xargs)"
+          AWS_REGION_TRIMMED="$(echo -n "${{ vars.AWS_REGION }}" | tr -d '\r' | xargs)"
+          ECR_REPOSITORY_TRIMMED="$(echo -n "${{ vars.ECR_REPOSITORY }}" | tr -d '\r' | xargs)"
+          ECS_CLUSTER_TRIMMED="$(echo -n "${{ vars.ECS_CLUSTER }}" | tr -d '\r' | xargs)"
+          ECS_SERVICE_TRIMMED="$(echo -n "${{ vars.ECS_SERVICE }}" | tr -d '\r' | xargs)"
+
+          echo "ECS_DEPLOY_ENABLED(trimmed)='${ECS_DEPLOY_ENABLED_TRIMMED}'"
+          echo "AWS_REGION(trimmed)='${AWS_REGION_TRIMMED}'"
+          echo "ECR_REPOSITORY(trimmed)='${ECR_REPOSITORY_TRIMMED}'"
+          echo "ECS_CLUSTER(trimmed)='${ECS_CLUSTER_TRIMMED}'"
+          echo "ECS_SERVICE(trimmed)='${ECS_SERVICE_TRIMMED}'"
 
           ok=true
-          if [ "${{ vars.ECS_DEPLOY_ENABLED }}" != "true" ]; then
-            echo "::error::ECS_DEPLOY_ENABLED must be exactly the string true (no spaces, correct case). Current value shown above."
+          if [ "${ECS_DEPLOY_ENABLED_TRIMMED}" != "true" ]; then
+            echo "::error::ECS_DEPLOY_ENABLED must be true after trimming spaces (got: '${ECS_DEPLOY_ENABLED_TRIMMED}')."
             ok=false
           fi
-          if [ -z "${{ vars.AWS_REGION }}" ]; then
+          if [ -z "${AWS_REGION_TRIMMED}" ]; then
             echo "::error::Missing repository variable AWS_REGION"
             ok=false
           fi
-          if [ -z "${{ vars.ECR_REPOSITORY }}" ]; then
+          if [ -z "${ECR_REPOSITORY_TRIMMED}" ]; then
             echo "::error::Missing repository variable ECR_REPOSITORY"
             ok=false
           fi
-          if [ -z "${{ vars.ECS_CLUSTER }}" ]; then
+          if [ -z "${ECS_CLUSTER_TRIMMED}" ]; then
             echo "::error::Missing repository variable ECS_CLUSTER"
             ok=false
           fi
-          if [ -z "${{ vars.ECS_SERVICE }}" ]; then
+          if [ -z "${ECS_SERVICE_TRIMMED}" ]; then
             echo "::error::Missing repository variable ECS_SERVICE"
             ok=false
           fi
@@ -63,6 +72,10 @@ jobs:
           fi
 
           echo "deploy=true" >> "$GITHUB_OUTPUT"
+          echo "aws_region=${AWS_REGION_TRIMMED}" >> "$GITHUB_OUTPUT"
+          echo "ecr_repository=${ECR_REPOSITORY_TRIMMED}" >> "$GITHUB_OUTPUT"
+          echo "ecs_cluster=${ECS_CLUSTER_TRIMMED}" >> "$GITHUB_OUTPUT"
+          echo "ecs_service=${ECS_SERVICE_TRIMMED}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
         if: steps.gate.outputs.deploy == 'true'
@@ -73,7 +86,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ steps.gate.outputs.aws_region }}
 
       - name: Login to Amazon ECR
         if: steps.gate.outputs.deploy == 'true'
@@ -84,7 +97,7 @@ jobs:
         if: steps.gate.outputs.deploy == 'true'
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
-          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          REPOSITORY: ${{ steps.gate.outputs.ecr_repository }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build -t "$REGISTRY/$REPOSITORY:$IMAGE_TAG" ./To-Do-List-Application
@@ -95,10 +108,13 @@ jobs:
         if: steps.gate.outputs.deploy == 'true'
         env:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-          AWS_REGION: ${{ vars.AWS_REGION }}
-          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          AWS_REGION: ${{ steps.gate.outputs.aws_region }}
+          ECR_REPOSITORY: ${{ steps.gate.outputs.ecr_repository }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          AWS_ACCOUNT_ID="$(echo -n "${AWS_ACCOUNT_ID}" | tr -d '\r' | xargs)"
+          AWS_REGION="$(echo -n "${AWS_REGION}" | tr -d '\r' | xargs)"
+          ECR_REPOSITORY="$(echo -n "${ECR_REPOSITORY}" | tr -d '\r' | xargs)"
           sed -e "s/<ACCOUNT_ID>/${AWS_ACCOUNT_ID}/g" \
               -e "s/<REGION>/${AWS_REGION}/g" \
               -e "s/<ECR_REPOSITORY>/${ECR_REPOSITORY}/g" \
@@ -118,7 +134,7 @@ jobs:
         if: steps.gate.outputs.deploy == 'true'
         run: |
           aws ecs update-service \
-            --cluster "${{ vars.ECS_CLUSTER }}" \
-            --service "${{ vars.ECS_SERVICE }}" \
+            --cluster "${{ steps.gate.outputs.ecs_cluster }}" \
+            --service "${{ steps.gate.outputs.ecs_service }}" \
             --task-definition "${{ steps.register.outputs.task_definition_arn }}" \
             --force-new-deployment
